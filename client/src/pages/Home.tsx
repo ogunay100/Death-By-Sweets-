@@ -1,288 +1,404 @@
-import { useState } from "react";
-import { Link } from "wouter";
-import { ShoppingBag, ChevronRight, Phone, Mail, MapPin, Instagram, Facebook } from "lucide-react";
+import { ShoppingBag, Phone, Mail, MapPin, Instagram, Facebook, X, Plus, Minus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 
-// Import generated assets
 import heroImg from "@/assets/hero.png";
 import cookiesImg from "@/assets/cookies.jpg";
 import browniesImg from "@/assets/brownies.jpg";
 import cupcakesImg from "@/assets/cupcakes.jpg";
-import cakeImg from "@/assets/cake.jpg";
 import loafImg from "@/assets/loaf.jpg";
 
-const PRODUCTS = [
-  { id: 1, name: "Decadent Chocolate Chip Cookies", price: "$24/dozen", image: cookiesImg, category: "Cookies" },
-  { id: 2, name: "Double Fudge Brownies", price: "$28/box", image: browniesImg, category: "Brownies" },
-  { id: 3, name: "Velvet Cupcakes", price: "$32/dozen", image: cupcakesImg, category: "Cupcakes" },
-  { id: 4, name: "Midnight Truffle Cake", price: "$55/whole", image: cakeImg, category: "Cakes" },
-  { id: 5, name: "Spiced Pumpkin Loaf", price: "$18/loaf", image: loafImg, category: "Loaves" },
+const FORMSPREE_ID = "YOUR_FORM_ID";
+
+const MENU = [
+  {
+    id: "cookies",
+    name: "Cookies",
+    emoji: "🍪",
+    price: "$3 each  ·  $30 / dozen",
+    note: "Mix-ins are an additional $2–$4 per dozen",
+    image: cookiesImg,
+    items: ["Chocolate Chip", "Triple Chocolate", "M&M", "Stuffed", "Seasonal"],
+  },
+  {
+    id: "brownies",
+    name: "Brownies",
+    emoji: "🍫",
+    price: "$3 each  ·  $30 / box",
+    image: browniesImg,
+    items: ["Fudge", "Brookie", "Nutella Blondie", "Cinnamon Roll Blondie", "Seasonal"],
+  },
+  {
+    id: "cupcakes",
+    name: "Cupcakes & Cakes",
+    emoji: "🧁",
+    price: "Mini $3.50 each  ·  $35 / dozen",
+    note: "Whole cake pricing — message us! · Frostings: Vanilla · Chocolate · Coffee · Strawberry",
+    image: cupcakesImg,
+    items: ["Vanilla", "Chocolate", "Red Velvet", "Seasonal"],
+  },
+  {
+    id: "loaves",
+    name: "Loaves",
+    emoji: "🍞",
+    price: "$2.50 / slice  ·  $20 / loaf",
+    image: loafImg,
+    items: ["Lemon Glazed", "Banana (Nuts or Choc Chips)", "Cinnamon Crumb Cake", "Seasonal"],
+  },
 ];
+
+type CartItem = { category: string; item: string; quantity: number };
 
 export default function Home() {
   const { toast } = useToast();
-  const [cart, setCart] = useState<{id: number, quantity: number}[]>([]);
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [submitting, setSubmitting] = useState(false);
 
-  const addToOrder = (id: number) => {
-    setCart(prev => {
-      const existing = prev.find(item => item.id === id);
+  const cartCount = cart.reduce((acc, i) => acc + i.quantity, 0);
+
+  const addItem = (category: string, item: string) => {
+    setCart((prev) => {
+      const existing = prev.find((i) => i.category === category && i.item === item);
       if (existing) {
-        return prev.map(item => item.id === id ? { ...item, quantity: item.quantity + 1 } : item);
+        return prev.map((i) =>
+          i.category === category && i.item === item ? { ...i, quantity: i.quantity + 1 } : i
+        );
       }
-      return [...prev, { id, quantity: 1 }];
+      return [...prev, { category, item, quantity: 1 }];
     });
-    toast({
-      title: "Added to Order",
-      description: "Item has been added to your sweet selection.",
-    });
+    toast({ title: "Added! 💀", description: `${item} added to your order.` });
   };
 
-  const handleOrderSubmit = (e: React.FormEvent) => {
+  const updateQty = (category: string, item: string, delta: number) => {
+    setCart((prev) =>
+      prev
+        .map((i) =>
+          i.category === category && i.item === item ? { ...i, quantity: i.quantity + delta } : i
+        )
+        .filter((i) => i.quantity > 0)
+    );
+  };
+
+  const removeItem = (category: string, item: string) => {
+    setCart((prev) => prev.filter((i) => !(i.category === category && i.item === item)));
+  };
+
+  const handleOrderSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (cart.length === 0) {
-      toast({
-        title: "Empty Order",
-        description: "Please select some sweets before placing an order.",
-        variant: "destructive"
-      });
+      toast({ title: "Your order is empty!", description: "Add some items from the menu first.", variant: "destructive" });
       return;
     }
-    toast({
-      title: "Order Request Sent",
-      description: "We've received your request and will contact you shortly to confirm.",
-    });
-    setCart([]);
-    (e.target as HTMLFormElement).reset();
+    const form = e.currentTarget;
+    const data = new FormData(form);
+    const orderSummary = cart.map((i) => `${i.quantity}x ${i.item} (${i.category})`).join(", ");
+    const payload = {
+      name: data.get("name"),
+      email: data.get("email"),
+      phone: data.get("phone"),
+      date: data.get("date"),
+      order: orderSummary,
+      instructions: data.get("instructions") || "None",
+    };
+    setSubmitting(true);
+    try {
+      const res = await fetch(`https://formspree.io/f/${FORMSPREE_ID}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        toast({ title: "Order sent! 🖤", description: "We'll reach out shortly to confirm your order." });
+        setCart([]);
+        form.reset();
+      } else throw new Error();
+    } catch {
+      toast({ title: "Something went wrong", description: "Please try again or contact us directly.", variant: "destructive" });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const handleContactSubmit = (e: React.FormEvent) => {
+  const handleContactSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    toast({
-      title: "Message Sent",
-      description: "The team at Death by Sweets will get back to you soon.",
-    });
-    (e.target as HTMLFormElement).reset();
+    const form = e.currentTarget;
+    const data = new FormData(form);
+    setSubmitting(true);
+    try {
+      const res = await fetch(`https://formspree.io/f/${FORMSPREE_ID}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ name: data.get("contact_name"), email: data.get("contact_email"), message: data.get("contact_message") }),
+      });
+      if (res.ok) {
+        toast({ title: "Message sent! 💌", description: "We'll get back to you soon." });
+        form.reset();
+      } else throw new Error();
+    } catch {
+      toast({ title: "Error", description: "Please try again.", variant: "destructive" });
+    } finally {
+      setSubmitting(false);
+    }
   };
-
-  const cartTotalItems = cart.reduce((acc, item) => acc + item.quantity, 0);
 
   return (
-    <div className="min-h-screen bg-background text-foreground selection:bg-primary selection:text-white">
-      {/* Navigation */}
+    <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
+
+      {/* NAV */}
       <nav className="fixed top-0 w-full z-50 bg-background/90 backdrop-blur-md border-b border-border">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-          <div className="text-2xl font-serif font-bold text-accent">Death by Sweets</div>
-          <div className="hidden md:flex space-x-8 text-sm uppercase tracking-widest font-medium">
-            <a href="#menu" className="hover:text-accent transition-colors">Menu</a>
-            <a href="#order" className="hover:text-accent transition-colors">Order</a>
-            <a href="#contact" className="hover:text-accent transition-colors">Contact</a>
+          <div className="text-xl md:text-2xl font-brand text-primary glow-pink-sm cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
+            💀 Death By Sweets
           </div>
-          <Button variant="outline" className="border-accent text-accent hover:bg-accent hover:text-background rounded-none border-2 h-10 px-6 font-semibold" onClick={() => document.getElementById('order')?.scrollIntoView()}>
-            <ShoppingBag className="w-4 h-4 mr-2" />
-            Cart ({cartTotalItems})
-          </Button>
+          <div className="hidden md:flex gap-8 text-sm uppercase tracking-widest font-heading font-semibold">
+            {["menu", "order", "contact"].map((s) => (
+              <a key={s} href={`#${s}`} className="text-muted-foreground hover:text-primary transition-colors">{s}</a>
+            ))}
+          </div>
+          <button
+            onClick={() => document.getElementById("order")?.scrollIntoView({ behavior: "smooth" })}
+            className="flex items-center gap-2 border-2 border-primary text-primary px-4 py-2 text-sm font-heading font-semibold hover:bg-primary hover:text-background transition-all"
+          >
+            <ShoppingBag className="w-4 h-4" />
+            Order ({cartCount})
+          </button>
         </div>
       </nav>
 
-      {/* Hero Section */}
-      <section className="relative h-[90vh] flex items-center justify-center overflow-hidden">
-        <div className="absolute inset-0 z-0">
-          <img src={heroImg} alt="Decadent chocolate desserts" className="w-full h-full object-cover opacity-40" />
-          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
+      {/* HERO */}
+      <section className="relative h-screen flex items-center justify-center overflow-hidden">
+        <div className="absolute inset-0">
+          <img src={heroImg} alt="Death By Sweets" className="w-full h-full object-cover opacity-25" />
+          <div className="absolute inset-0 bg-gradient-to-b from-background/60 via-background/40 to-background" />
         </div>
-        
-        <div className="relative z-10 text-center max-w-4xl px-6 mt-20">
-          <h1 className="text-5xl md:text-7xl lg:text-8xl mb-6 text-white drop-shadow-lg">
-            Indulge in <br/>
-            <span className="text-primary italic">Darkness</span>
-          </h1>
-          <p className="text-lg md:text-xl mb-10 text-muted-foreground max-w-2xl mx-auto font-light leading-relaxed">
-            Sinfully rich cookies, brownies, cupcakes, cakes, and loaves. Handcrafted for those who demand the ultimate chocolate and sugar experience.
+        <div className="relative z-10 text-center px-6 mt-20 max-w-4xl mx-auto">
+          <p className="font-heading text-primary text-lg md:text-xl tracking-widest uppercase mb-4 glow-pink-sm">
+            ✦ Handcrafted with Dark Magic ✦
           </p>
-          <Button 
-            className="bg-primary hover:bg-primary/90 text-white rounded-none px-10 py-6 text-lg uppercase tracking-widest shadow-xl transition-transform hover:-translate-y-1"
-            onClick={() => document.getElementById('menu')?.scrollIntoView()}
-          >
-            Explore the Menu <ChevronRight className="ml-2 w-5 h-5" />
-          </Button>
+          <h1 className="font-brand text-5xl md:text-7xl lg:text-8xl text-foreground glow-pink leading-tight mb-6">
+            Death By<br /><span className="text-primary">Sweets</span>
+          </h1>
+          <p className="font-body text-base md:text-lg text-muted-foreground max-w-2xl mx-auto mb-10 leading-relaxed">
+            Sinfully rich cookies, brownies, cupcakes, cakes & loaves — handcrafted for those who crave something <em>dangerously</em> good.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <button
+              onClick={() => document.getElementById("menu")?.scrollIntoView({ behavior: "smooth" })}
+              className="bg-primary text-background px-10 py-4 font-heading font-bold text-lg uppercase tracking-widest hover:bg-primary/80 transition-all hover:-translate-y-1 shadow-lg shadow-primary/25"
+            >See the Menu</button>
+            <button
+              onClick={() => document.getElementById("order")?.scrollIntoView({ behavior: "smooth" })}
+              className="border-2 border-primary text-primary px-10 py-4 font-heading font-bold text-lg uppercase tracking-widest hover:bg-primary hover:text-background transition-all hover:-translate-y-1"
+            >Place an Order</button>
+          </div>
         </div>
       </section>
 
-      {/* Menu / Products Section */}
-      <section id="menu" className="py-32 px-6">
+      {/* MENU */}
+      <section id="menu" className="py-28 px-6">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-20">
-            <h2 className="text-4xl md:text-5xl mb-4 text-accent">Our Creations</h2>
-            <div className="w-24 h-1 bg-primary mx-auto"></div>
+            <p className="font-heading text-primary tracking-widest uppercase text-sm mb-3">✦ Our Creations ✦</p>
+            <h2 className="font-brand text-4xl md:text-5xl text-foreground glow-pink">The Menu</h2>
+            <div className="flex items-center justify-center gap-4 mt-6">
+              <div className="h-px bg-border flex-1 max-w-32" />
+              <span className="text-primary text-2xl">💀</span>
+              <div className="h-px bg-border flex-1 max-w-32" />
+            </div>
           </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
-            {PRODUCTS.map((product) => (
-              <Card key={product.id} className="bg-card border-border overflow-hidden rounded-none group hover:border-accent transition-colors duration-500">
-                <div className="relative h-80 overflow-hidden">
-                  <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors duration-500 z-10" />
-                  <img 
-                    src={product.image} 
-                    alt={product.name} 
-                    className="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-700 ease-out"
-                  />
-                  <div className="absolute top-4 right-4 z-20 bg-background/80 backdrop-blur px-3 py-1 font-serif text-accent border border-accent/20">
-                    {product.category}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+            {MENU.map((cat) => (
+              <div key={cat.id} className="bg-card border border-border card-glow transition-all duration-500 overflow-hidden group">
+                <div className="relative h-56 overflow-hidden">
+                  <img src={cat.image} alt={cat.name} className="w-full h-full object-cover opacity-60 group-hover:opacity-80 group-hover:scale-105 transition-all duration-700" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-card via-card/40 to-transparent" />
+                  <div className="absolute bottom-4 left-6">
+                    <h3 className="font-heading text-3xl font-bold text-primary glow-pink-sm">{cat.emoji} {cat.name}</h3>
                   </div>
                 </div>
-                <CardContent className="p-8 text-center bg-card">
-                  <h3 className="text-2xl mb-2 min-h-[64px] flex items-center justify-center">{product.name}</h3>
-                  <p className="text-primary font-semibold mb-6 text-lg">{product.price}</p>
-                  <Button 
-                    variant="outline" 
-                    className="w-full rounded-none border-border hover:bg-accent hover:text-background hover:border-accent transition-all"
-                    onClick={() => addToOrder(product.id)}
-                  >
-                    Add to Request
-                  </Button>
-                </CardContent>
-              </Card>
+                <div className="p-6">
+                  <p className="font-heading text-primary font-semibold text-lg mb-4">{cat.price}</p>
+                  <ul className="space-y-2 mb-4">
+                    {cat.items.map((item) => {
+                      const inCart = cart.find((c) => c.category === cat.name && c.item === item);
+                      return (
+                        <li key={item} className="flex items-center justify-between">
+                          <span className="font-body text-foreground/80 flex items-center gap-2">
+                            <span className="text-primary text-xs">♥</span> {item}
+                          </span>
+                          {inCart ? (
+                            <div className="flex items-center gap-2">
+                              <button type="button" onClick={() => updateQty(cat.name, item, -1)} className="w-6 h-6 border border-primary text-primary flex items-center justify-center hover:bg-primary hover:text-background transition-all">
+                                <Minus className="w-3 h-3" />
+                              </button>
+                              <span className="font-heading text-primary font-bold w-4 text-center text-sm">{inCart.quantity}</span>
+                              <button type="button" onClick={() => updateQty(cat.name, item, 1)} className="w-6 h-6 border border-primary text-primary flex items-center justify-center hover:bg-primary hover:text-background transition-all">
+                                <Plus className="w-3 h-3" />
+                              </button>
+                              <button type="button" onClick={() => removeItem(cat.name, item)} className="text-muted-foreground hover:text-destructive transition-colors ml-1">
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button onClick={() => addItem(cat.name, item)} className="text-xs font-heading font-semibold border border-border text-muted-foreground px-3 py-1 hover:border-primary hover:text-primary transition-all">
+                              + Add
+                            </button>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  {cat.note && <p className="font-body text-xs text-muted-foreground italic border-t border-border pt-3">✦ {cat.note}</p>}
+                </div>
+              </div>
             ))}
           </div>
+          <p className="text-center font-body text-muted-foreground text-sm mt-12 italic">
+            ✦ Mix-ins for cookies will be an additional $2–$4 per dozen ✦
+          </p>
         </div>
       </section>
 
-      {/* Order Form Section */}
-      <section id="order" className="py-32 px-6 bg-secondary/30 relative">
+      {/* ORDER FORM */}
+      <section id="order" className="py-28 px-6 bg-secondary/30">
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-16">
-            <h2 className="text-4xl md:text-5xl mb-4">Request an Order</h2>
-            <p className="text-muted-foreground">Select your sweets from the menu and fill out your details below. We'll contact you to confirm pickup or delivery.</p>
+            <p className="font-heading text-primary tracking-widest uppercase text-sm mb-3">✦ Ready to Indulge? ✦</p>
+            <h2 className="font-brand text-4xl md:text-5xl text-foreground glow-pink">Place Your Order</h2>
+            <p className="font-body text-muted-foreground mt-4 max-w-xl mx-auto">
+              Select your items from the menu above, fill in your details, and we'll reach out to confirm everything.
+            </p>
           </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-12">
-            <div className="md:col-span-2 bg-card p-6 border border-border">
-              <h3 className="text-xl mb-6 font-serif border-b border-border pb-4">Your Selection</h3>
+          <form onSubmit={handleOrderSubmit} className="space-y-8">
+            <div className="bg-card border border-border p-6">
+              <h3 className="font-heading text-primary text-xl font-semibold mb-4 flex items-center gap-2">
+                <ShoppingBag className="w-5 h-5" /> Your Selection
+              </h3>
               {cart.length === 0 ? (
-                <p className="text-muted-foreground italic text-sm">Your order is currently empty.</p>
+                <p className="font-body text-muted-foreground italic text-sm">No items added yet — pick your treats from the menu above!</p>
               ) : (
-                <ul className="space-y-4">
-                  {cart.map(item => {
-                    const product = PRODUCTS.find(p => p.id === item.id);
-                    return product ? (
-                      <li key={item.id} className="flex justify-between items-center text-sm border-b border-border/50 pb-2">
-                        <span>{item.quantity}x {product.name}</span>
-                      </li>
-                    ) : null;
-                  })}
+                <ul className="space-y-3">
+                  {cart.map((item) => (
+                    <li key={`${item.category}-${item.item}`} className="flex items-center justify-between border-b border-border pb-2">
+                      <span className="font-body text-sm">
+                        <span className="text-primary font-semibold">{item.quantity}x</span> {item.item}
+                        <span className="text-muted-foreground ml-2 text-xs">({item.category})</span>
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button type="button" onClick={() => updateQty(item.category, item.item, -1)} className="w-5 h-5 border border-border text-muted-foreground flex items-center justify-center hover:border-primary hover:text-primary transition-all">
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <button type="button" onClick={() => updateQty(item.category, item.item, 1)} className="w-5 h-5 border border-border text-muted-foreground flex items-center justify-center hover:border-primary hover:text-primary transition-all">
+                          <Plus className="w-3 h-3" />
+                        </button>
+                        <button type="button" onClick={() => removeItem(item.category, item.item)} className="text-muted-foreground hover:text-destructive transition-colors">
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </li>
+                  ))}
                 </ul>
               )}
             </div>
-            
-            <form onSubmit={handleOrderSubmit} className="md:col-span-3 space-y-6">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium uppercase tracking-wider text-muted-foreground">First Name</label>
-                  <Input required className="bg-background rounded-none border-border focus-visible:ring-accent" placeholder="John" />
+            <div className="bg-card border border-border p-6 space-y-5">
+              <h3 className="font-heading text-primary text-xl font-semibold">Your Details</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <div className="space-y-1">
+                  <label className="font-heading text-xs uppercase tracking-widest text-muted-foreground">Name *</label>
+                  <Input name="name" required placeholder="Jane Doe" className="bg-background border-border focus-visible:ring-primary font-body" />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium uppercase tracking-wider text-muted-foreground">Last Name</label>
-                  <Input required className="bg-background rounded-none border-border focus-visible:ring-accent" placeholder="Doe" />
+                <div className="space-y-1">
+                  <label className="font-heading text-xs uppercase tracking-widest text-muted-foreground">Phone *</label>
+                  <Input name="phone" required type="tel" placeholder="(555) 123-4567" className="bg-background border-border focus-visible:ring-primary font-body" />
                 </div>
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium uppercase tracking-wider text-muted-foreground">Email</label>
-                <Input required type="email" className="bg-background rounded-none border-border focus-visible:ring-accent" placeholder="john@example.com" />
+              <div className="space-y-1">
+                <label className="font-heading text-xs uppercase tracking-widest text-muted-foreground">Email *</label>
+                <Input name="email" required type="email" placeholder="jane@example.com" className="bg-background border-border focus-visible:ring-primary font-body" />
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium uppercase tracking-wider text-muted-foreground">Phone</label>
-                <Input required type="tel" className="bg-background rounded-none border-border focus-visible:ring-accent" placeholder="(555) 123-4567" />
+              <div className="space-y-1">
+                <label className="font-heading text-xs uppercase tracking-widest text-muted-foreground">Preferred Pickup / Delivery Date</label>
+                <Input name="date" type="date" className="bg-background border-border focus-visible:ring-primary font-body" />
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium uppercase tracking-wider text-muted-foreground">Special Instructions / Date Required</label>
-                <Textarea className="bg-background rounded-none border-border focus-visible:ring-accent min-h-[100px]" placeholder="Any allergies or specific pickup date?" />
+              <div className="space-y-1">
+                <label className="font-heading text-xs uppercase tracking-widest text-muted-foreground">Special Instructions</label>
+                <Textarea name="instructions" placeholder="Frosting preferences, allergies, mix-in choices, special requests..." className="bg-background border-border focus-visible:ring-primary font-body min-h-[100px] resize-none" />
               </div>
-              <Button type="submit" className="w-full bg-accent text-background hover:bg-accent/90 rounded-none py-6 text-lg">
-                Submit Request
-              </Button>
+            </div>
+            <button type="submit" disabled={submitting} className="w-full bg-primary text-background py-5 font-heading font-bold text-lg uppercase tracking-widest hover:bg-primary/80 transition-all disabled:opacity-60 shadow-lg shadow-primary/20">
+              {submitting ? "Sending... 💀" : "Submit Order Request 💀"}
+            </button>
+            <p className="text-center font-body text-xs text-muted-foreground">We'll contact you to confirm your order and arrange payment.</p>
+          </form>
+        </div>
+      </section>
+
+      {/* CONTACT */}
+      <section id="contact" className="py-28 px-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <p className="font-heading text-primary tracking-widest uppercase text-sm mb-3">✦ Get In Touch ✦</p>
+            <h2 className="font-brand text-4xl md:text-5xl text-foreground glow-pink">Reach Out</h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-16 items-start">
+            <div>
+              <p className="font-body text-muted-foreground text-lg mb-10 leading-relaxed">
+                Have a custom request? Planning a dark and decadent event? We're ready to bring your sweetest desires to life.
+              </p>
+              <div className="space-y-6">
+                {[
+                  { icon: Phone, label: "Call Us", value: "1-800-SWEET-DEATH" },
+                  { icon: Mail, label: "Email Us", value: "souls@deathbysweets.com" },
+                  { icon: MapPin, label: "Find Us", value: "666 Midnight Lane, Bakery District" },
+                ].map(({ icon: Icon, label, value }) => (
+                  <div key={label} className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-card border border-border flex items-center justify-center flex-shrink-0">
+                      <Icon className="w-5 h-5 text-primary" />
+                    </div>
+                    <div>
+                      <p className="font-heading text-foreground font-semibold">{label}</p>
+                      <p className="font-body text-muted-foreground text-sm">{value}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-3 mt-10">
+                {[Instagram, Facebook].map((Icon, i) => (
+                  <a key={i} href="#" className="w-10 h-10 border border-border flex items-center justify-center text-muted-foreground hover:border-primary hover:text-primary transition-all">
+                    <Icon className="w-4 h-4" />
+                  </a>
+                ))}
+              </div>
+            </div>
+            <form onSubmit={handleContactSubmit} className="bg-card border border-border p-8 space-y-5">
+              <h3 className="font-heading text-primary text-xl font-semibold">Send a Message</h3>
+              <div className="space-y-1">
+                <label className="font-heading text-xs uppercase tracking-widest text-muted-foreground">Your Name</label>
+                <Input name="contact_name" required placeholder="Jane Doe" className="bg-background border-border focus-visible:ring-primary font-body" />
+              </div>
+              <div className="space-y-1">
+                <label className="font-heading text-xs uppercase tracking-widest text-muted-foreground">Your Email</label>
+                <Input name="contact_email" required type="email" placeholder="jane@example.com" className="bg-background border-border focus-visible:ring-primary font-body" />
+              </div>
+              <div className="space-y-1">
+                <label className="font-heading text-xs uppercase tracking-widest text-muted-foreground">Message</label>
+                <Textarea name="contact_message" required placeholder="What's on your mind?" className="bg-background border-border focus-visible:ring-primary font-body min-h-[120px] resize-none" />
+              </div>
+              <button type="submit" disabled={submitting} className="w-full border-2 border-primary text-primary py-4 font-heading font-bold uppercase tracking-widest hover:bg-primary hover:text-background transition-all disabled:opacity-60">
+                {submitting ? "Sending..." : "Send Message 🖤"}
+              </button>
             </form>
           </div>
         </div>
       </section>
 
-      {/* Contact Section */}
-      <section id="contact" className="py-32 px-6">
-        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
-          <div>
-            <h2 className="text-4xl md:text-5xl mb-6">Reach Out to the Team</h2>
-            <div className="w-16 h-1 bg-primary mb-8"></div>
-            <p className="text-lg text-muted-foreground mb-10">
-              Have a custom request? Planning a dark and decadent event? The team at Death by Sweets is ready to bring your darkest sugary desires to life.
-            </p>
-            
-            <div className="space-y-6">
-              <div className="flex items-center">
-                <div className="w-12 h-12 bg-card border border-border flex items-center justify-center mr-4">
-                  <Phone className="w-5 h-5 text-accent" />
-                </div>
-                <div>
-                  <h4 className="font-serif text-lg">Call Us</h4>
-                  <p className="text-muted-foreground">1-800-SWEET-DEATH</p>
-                </div>
-              </div>
-              <div className="flex items-center">
-                <div className="w-12 h-12 bg-card border border-border flex items-center justify-center mr-4">
-                  <Mail className="w-5 h-5 text-accent" />
-                </div>
-                <div>
-                  <h4 className="font-serif text-lg">Email Us</h4>
-                  <p className="text-muted-foreground">souls@deathbysweets.com</p>
-                </div>
-              </div>
-              <div className="flex items-center">
-                <div className="w-12 h-12 bg-card border border-border flex items-center justify-center mr-4">
-                  <MapPin className="w-5 h-5 text-accent" />
-                </div>
-                <div>
-                  <h4 className="font-serif text-lg">Find Us</h4>
-                  <p className="text-muted-foreground">666 Midnight Lane, Bakery District</p>
-                </div>
-              </div>
-            </div>
-            
-            <div className="flex space-x-4 mt-12">
-              <a href="#" className="w-10 h-10 border border-border flex items-center justify-center hover:bg-accent hover:text-background transition-colors hover:border-accent">
-                <Instagram className="w-4 h-4" />
-              </a>
-              <a href="#" className="w-10 h-10 border border-border flex items-center justify-center hover:bg-accent hover:text-background transition-colors hover:border-accent">
-                <Facebook className="w-4 h-4" />
-              </a>
-            </div>
-          </div>
-          
-          <div className="bg-card p-8 md:p-12 border border-border">
-            <h3 className="text-2xl mb-8 font-serif">Send a Message</h3>
-            <form onSubmit={handleContactSubmit} className="space-y-6">
-              <div className="space-y-2">
-                <Input required className="bg-background rounded-none border-border border-b-2 border-t-0 border-l-0 border-r-0 focus-visible:ring-0 focus-visible:border-accent px-0" placeholder="Your Name" />
-              </div>
-              <div className="space-y-2">
-                <Input required type="email" className="bg-background rounded-none border-border border-b-2 border-t-0 border-l-0 border-r-0 focus-visible:ring-0 focus-visible:border-accent px-0" placeholder="Your Email" />
-              </div>
-              <div className="space-y-2">
-                <Textarea required className="bg-background rounded-none border-border border-b-2 border-t-0 border-l-0 border-r-0 focus-visible:ring-0 focus-visible:border-accent px-0 min-h-[120px] resize-none" placeholder="Your Message" />
-              </div>
-              <Button type="submit" variant="outline" className="w-full rounded-none border-2 border-primary text-primary hover:bg-primary hover:text-white mt-8">
-                Send Message
-              </Button>
-            </form>
-          </div>
-        </div>
-      </section>
-      
-      {/* Footer */}
-      <footer className="bg-black py-12 text-center border-t border-border">
-        <h2 className="text-2xl font-serif text-accent mb-4">Death by Sweets</h2>
-        <p className="text-muted-foreground text-sm uppercase tracking-widest">© {new Date().getFullYear()} All Rights Reserved.</p>
+      {/* FOOTER */}
+      <footer className="bg-black py-14 text-center border-t border-border">
+        <h2 className="font-brand text-2xl text-primary glow-pink-sm mb-3">💀 Death By Sweets 💀</h2>
+        <p className="font-body text-muted-foreground text-xs uppercase tracking-widest mb-2">Handcrafted with dark magic & a lot of sugar</p>
+        <p className="font-body text-muted-foreground text-xs">© {new Date().getFullYear()} Death By Sweets · All Rights Reserved</p>
       </footer>
     </div>
   );
